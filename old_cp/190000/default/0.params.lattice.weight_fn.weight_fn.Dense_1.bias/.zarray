@@ -1,1 +1,0 @@
-{"chunks":[31],"compressor":{"id":"zstd","level":1},"dimension_separator":".","dtype":"<f4","fill_value":null,"filters":null,"order":"C","shape":[31],"zarr_format":2}
