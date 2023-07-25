@@ -123,7 +123,7 @@ def numpy_preprocess(wav, scenario, action, intent):
 def preprocess(
     dataset: tf.data.Dataset,
     is_train: bool = True,
-    batch_size: int = 4,
+    batch_size: int = 6,
     max_num_frames: int =600 ,
 ) -> tf.data.Dataset:
   """Applies data preprocessing for training and evaluation."""

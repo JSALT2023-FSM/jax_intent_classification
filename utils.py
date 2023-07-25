@@ -1,5 +1,6 @@
 import pandas as pd
 import jax.numpy as jnp
+import jax
 
 def get_scenario_action(semantics) : 
     scenario = semantics.split("'")[3]
@@ -28,6 +29,7 @@ def sequence_mask(lengths, max_length):
   """
   return jnp.arange(max_length)[None] < lengths[:, None]
 
+@jax.vmap
 def flip_sequences(inputs, lengths):
   """Flips a sequence of inputs along the time dimension.
 

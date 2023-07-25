@@ -120,10 +120,11 @@ def numpy_preprocess(wav, scenario, action, intent):
   action_label, scenario_label, intent_label = actions_dict[action.decode("utf-8")], scen_dict[scenario.decode("utf-8")], intent_dict[intent.decode("utf-8")]
   return encoder_frames,scenario_label, action_label, intent_label, encoder_frames.shape[1]
 
+list_of_lengths = [100,250,400,600]
 def preprocess(
     dataset: tf.data.Dataset,
     is_train: bool = True,
-    batch_size: int = 4,
+    batch_size: int = 6,
     max_num_frames: int =600 ,
 ) -> tf.data.Dataset:
   """Applies data preprocessing for training and evaluation."""
@@ -183,16 +184,14 @@ DEV_BATCH = next(
 )
 
 TEST_BATCHES = (
-    test_dataset.skip(TEST_BATCH_SPLIT)
-    .apply(functools.partial(preprocess))
+    test_dataset.apply(functools.partial(preprocess))
     .prefetch(tf.data.AUTOTUNE)
     .as_numpy_iterator()
 )
 
 # An iterator of training batches.
 TRAIN_BATCHES = (
-    train_dataset.skip(TEST_BATCH_SPLIT)
-    .apply(functools.partial(preprocess))
+    train_dataset.apply(functools.partial(preprocess))
     .prefetch(tf.data.AUTOTUNE)
     .as_numpy_iterator()
 )
