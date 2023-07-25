@@ -145,11 +145,13 @@ def preprocess(
   )
   return dataset
 
-def create_dict(train_csvs): 
+def create_dict(train_csvs, test= False): 
     tables = []
     for train_csv in train_csvs : 
         tables.append (pd.read_csv(train_csv))
-    table = pd.concat(tables)[0:20]
+    table = pd.concat(tables)
+    if test : 
+        table = table[0:13074]
     semantics = table["semantics"]
     file_ids = [x.split("/")[-1] for x in list(table["wav"])]
     actions = []
@@ -163,7 +165,8 @@ def create_dict(train_csvs):
     return  file_ids, scenarios, actions, intents
 
 train_all = create_dict([train_csv, train_synthetic])
-test_all = create_dict([test_csv])
+test_all = create_dict([test_csv], test=True)
+test_all = create_dict([train_csv], test=False)
 #test_all = create_dict([train_csv, train_synthetic])
 dev_all = create_dict([dev_csv])
 train_dataset = tf.data.Dataset.from_tensor_slices(train_all)
@@ -194,7 +197,7 @@ TRAIN_BATCHES = (
     .as_numpy_iterator()
 )
 
-checkpoint_dir = "first_checkpoint"
+checkpoint_dir = "alphas_checkpoint"
 if not os.path.exists(checkpoint_dir) : 
     os.makedirs(checkpoint_dir)
 
@@ -311,6 +314,7 @@ class KeysOnlyMlpAttention(nn.Module):
     scores = scores.squeeze(-1)  # New shape: <float32>[batch_size, seq_len].
     scores = jnp.where(mask, scores, -jnp.inf)  # Using exp(-inf) = 0 below.
     scores = nn.softmax(scores, axis=-1)
+    print(scores)
 
     # Captures the scores if 'intermediates' is mutable, otherwise does nothing.
     self.sow('intermediates', 'attention', scores)
@@ -320,21 +324,24 @@ class KeysOnlyMlpAttention(nn.Module):
 
 class Model(nn.Module):
   # Size for encoder LSTMs, the output context LSTM, the joint weight function.
-  hidden_size: int = 256
+  hidden_size: int = 768
   num_encoder_layers: int = 1
   num_scenarios = scen_count
   num_actions = act_count
+  num_intents = intent_count
   dropout_rate = 0.1
+  dense_size = 1024
   def setup(self):
     # Putting all pieces together to build the RecoginitionLattice.
     self.lattice =lattice 
     self.Downstream_Encoder = SimpleBiLSTM(self.hidden_size)
-    self.scenarios_head = nn.Dense(self.num_scenarios)
-    self.actions_head = nn.Dense(self.num_actions)
-    self.keys_only_mlp_attention = KeysOnlyMlpAttention(512)
+    self.second_downstream_Encoder = SimpleBiLSTM(self.hidden_size)
+    self.intents_head = nn.Dense(self.num_intents)
+    self.keys_only_mlp_attention = KeysOnlyMlpAttention(2*self.hidden_size)
     self.dropout_layer = nn.Dropout(rate=self.dropout_rate)
-    self.regrouping_head = nn.Dense(1)
-  def __call__(self, batch):
+    self.regrouping_head = nn.Dense(self.dense_size)
+    self.post_attention = nn.Dense(2*self.hidden_size)
+  def __call__(self, batch, test):
     features = batch["encoder_frames"]
     # The __call__() method of RecognitionLattice returns [batch_size] per-
     # This needs to be changed 
@@ -342,48 +349,53 @@ class Model(nn.Module):
     blank, vocab = self.lattice.weight_fn(cache, features)
     blank_expanded = jnp.expand_dims(blank, axis =3)
     full_lattice = jnp.concatenate([blank_expanded, vocab], axis = 3)
+    full_lattice = jnp.exp(full_lattice)
+    full_lattice = jnp.reshape(full_lattice, (full_lattice.shape[0], full_lattice.shape[1], full_lattice.shape[2]*full_lattice.shape[3]))
+    full_lattice = jax.lax.stop_gradient(full_lattice)
     regrouped_lattice = self.regrouping_head(full_lattice)
-    regrouped_lattice = jnp.squeeze(regrouped_lattice, axis=3) # TODO Add the axis here
-    regrouped_lattice = jnp.exp(regrouped_lattice)
     encoded_lattice=  self.Downstream_Encoder(regrouped_lattice, batch["num_frames"])
+    encoded_lattice= self.dropout_layer(encoded_lattice, deterministic=test)
+    encoded_lattice=  self.second_downstream_Encoder(encoded_lattice, batch["num_frames"])
     mask = sequence_mask(batch["num_frames"], encoded_lattice.shape[1])
     attention = self.keys_only_mlp_attention(encoded_lattice, mask)
-
     # Summarize the inputs by taking their weighted sum using attention scores.
     context = jnp.expand_dims(attention, 1) @ encoded_lattice
     context = context.squeeze(1)  # <float32>[batch_size, encoded_inputs_size]
-    #context = self.dropout_layer(context, deterministic=deterministic)
+    context = self.dropout_layer(context, deterministic=test)
+    context = self.post_attention(context)
 
-    scenarios = self.scenarios_head(context)
-    actions = self.actions_head(context)
-    return scenarios, actions
+    intents = self.intents_head(context)
+    return intents
+def count_number_params(params):
+    return sum(jax.tree_util.tree_leaves(jax.tree_util.tree_map(lambda x : x.size,params)))
 
-def compute_accuracies(actions, scenarios, batch):
-    actions_results = actions ==batch["action"]
-    scenarios_results = scenarios == batch["scenario"]
-    intents = actions_results * scenarios_results
-    return {"actions" : jnp.mean(actions_results),
-            "scenarios" : jnp.mean(scenarios_results),
-            "intents" : jnp.mean(intents)}
-
+def compute_accuracies(intents, batch, loss):
+    intents_results = intents == batch["intent"]
+    return {"intents" : jnp.mean(intents_results), "loss": loss }
+decoder_params = lattice_params["params"]
 def train_and_eval(
     TEST_BATCHES,
     train_batches,
     model,
     step,
-    optimizer=optax.adam(2e-4),
-    num_steps=100000,
-    num_steps_per_eval=20,
-    num_eval_steps=20
+    optimizer=optax.chain(
+    optax.clip_by_global_norm(3.0), optax.adam(2e-5)),
+    num_steps=200000,
+    num_steps_per_eval=1000,
+    num_eval_steps=2176
 ):
   # Initialize the model parameters using a fixed RNG seed. Flax linen Modules
   # need to know the shape and dtype of its input to initialize the parameters,
   # we thus pass it the test batch.
+
+  train_rng = jax.random.PRNGKey(22)
   if step is None : 
-      params = model.init(jax.random.PRNGKey(0), DEV_BATCH)
+      params = model.init(jax.random.PRNGKey(0), DEV_BATCH, test=True).unfreeze()
+      import pprint
+      print(f" number of params total : {count_number_params(params) - count_number_params(lattice_params)}")
+      params["params"]["lattice"] = lattice_params["params"]
       opt_state = optimizer.init(params)
   else : 
-      print(f" step loaded : {step}")
       params = model.init(jax.random.PRNGKey(0), DEV_BATCH)
       opt_state = optimizer.init(params)
       params,opt_state = mngr.restore(step, items = [params, opt_state])
@@ -393,43 +405,44 @@ def train_and_eval(
   # `opt_state` won't be needed after calling `train_step`, so we donate them
   # and allow JAX to use their memory for storing the output.
   @functools.partial(jax.jit, donate_argnums=(0, 1))
-  def train_step(params, opt_state, batch):
+  def train_step(params, opt_state,rng, batch):
     # Compute the loss value and the gradients.
-    def loss_fn(params) : 
-        scenarios_logits, actions_logits = model.apply(params,batch) 
-        loss_scen = optax.softmax_cross_entropy_with_integer_labels(scenarios_logits, batch["scenario"])
-        loss_actions = optax.softmax_cross_entropy_with_integer_labels(actions_logits, batch["action"])
-        return jnp.mean(loss_actions) + jnp.mean(loss_scen)
-    loss, grads = jax.value_and_grad(loss_fn)(params)
+    def loss_fn(params, rng) : 
+        intent_logits = model.apply(params,batch, test=False, rngs={"dropout": rng}) 
+        loss_intent = optax.softmax_cross_entropy_with_integer_labels(intent_logits, batch["intent"])
+        return jnp.mean(loss_intent)
+    next_rng,rng = jax.random.split(rng)
+    loss, grads = jax.value_and_grad(loss_fn)(params, rng)
 
     # Compute the actual updates based on the optimizer state and the gradients.
     updates, opt_state = optimizer.update(grads, opt_state, params)
     # Apply the updates.
     params = optax.apply_updates(params, updates)
-    return params, opt_state, {'loss': loss}
+    params['params']['lattice'] = decoder_params
+    return params, opt_state, next_rng, {'loss': loss, "grads": optax.global_norm(grads)}
 
   # We are not passing additional arguments to jax.jit, so it can be used
   # directly as a function decorator.
   @jax.jit
   def eval_step(params, batch):
-    scenarios_logits, actions_logits = model.apply(params, batch)
+    intents_logits= model.apply(params, batch, test=True)
+    test_loss = optax.softmax_cross_entropy_with_integer_labels(intents_logits, batch["intent"])
     # Test accuracy.
-    scenarios = jnp.argmax(scenarios_logits, axis = 1)
-    actions = jnp.argmax(actions_logits, axis = 1)
+    intents = jnp.argmax(intents_logits, axis = 1)
     #Compute accuracies 
-    return compute_accuracies(actions, scenarios, batch)  
+    return compute_accuracies(intents, batch, test_loss)  
 
   num_done_steps = 0
   while num_done_steps < num_steps:
-    for step in tqdm(range(num_steps_per_eval)):
+    for step in tqdm(range(num_steps_per_eval), ascii=True):
       next_batch = next(train_batches)
-      params, opt_state, train_metrics = train_step(
-          params, opt_state, next(train_batches)
+      params, opt_state,train_rng, train_metrics = train_step(
+          params, opt_state, train_rng, next(train_batches)
       )
     mngr.save(num_done_steps,[params, opt_state])
 
-    eval_metrics = {"actions": [],"scenarios" : [], "intents" :[] }
-    for _ in tqdm(range(num_eval_steps)) : 
+    eval_metrics = { "intents" :[], "loss": [] }
+    for _ in tqdm(range(num_eval_steps), ascii=True) : 
 
         test_batch = next(TEST_BATCHES)
         eval_metrics_step = eval_step(params, test_batch)
@@ -439,12 +452,15 @@ def train_and_eval(
 
     num_done_steps += num_steps_per_eval
     print(f'step {num_done_steps}\ttrain {train_metrics}')
+
+    with open("log_file.txt", "a") as log_file : 
+        log_file.write(f"step {num_done_steps}\ttrain {train_metrics} \t eval loss : {jnp.mean(jnp.array(eval_metrics['loss']))} \t eval_accuracy {jnp.mean(jnp.array(eval_metrics['intents']))}")
+        log_file.write("\n")
     for i in eval_metrics : 
         print(f" {i} : {jnp.mean(jnp.array(eval_metrics[i]))}")
  
 
 model = Model()
-print("running the right script")
 step = mngr.latest_step()
 #import pdb; pdb.set_trace()
 train_and_eval(TEST_BATCHES, TRAIN_BATCHES, model, step)

@@ -1,0 +1,6 @@
+step 1000	train {'grads': Array(13.883181, dtype=float32), 'loss': Array(3.2430353, dtype=float32)} 	 eval loss : 3.106393814086914 	 eval_accuracy 0.22541360557079315
+step 2000	train {'grads': Array(19.576357, dtype=float32), 'loss': Array(3.298039, dtype=float32)} 	 eval loss : 2.525294542312622 	 eval_accuracy 0.3451286852359772
+step 3000	train {'grads': Array(13.974058, dtype=float32), 'loss': Array(3.1570659, dtype=float32)} 	 eval loss : 2.2188236713409424 	 eval_accuracy 0.4085477888584137
+step 4000	train {'grads': Array(14.746564, dtype=float32), 'loss': Array(1.5768089, dtype=float32)} 	 eval loss : 2.1730141639709473 	 eval_accuracy 0.4296875
+step 5000	train {'grads': Array(27.398697, dtype=float32), 'loss': Array(1.3384016, dtype=float32)} 	 eval loss : 1.9117332696914673 	 eval_accuracy 0.5024126768112183
+step 6000	train {'grads': Array(9.153607, dtype=float32), 'loss': Array(0.43420857, dtype=float32)} 	 eval loss : 1.959025263786316 	 eval_accuracy 0.49333640933036804

@@ -1,0 +1,13 @@
+step 2000	train {'grads': Array(11.614561, dtype=float32), 'loss': Array(1.421571, dtype=float32)} 	 eval loss : 2.7543885707855225 	 eval_accuracy 0.29090073704719543
+step 4000	train {'grads': Array(16.9404, dtype=float32), 'loss': Array(2.761365, dtype=float32)} 	 eval loss : 2.285611152648926 	 eval_accuracy 0.4009650647640228
+step 6000	train {'grads': Array(15.473935, dtype=float32), 'loss': Array(1.7233984, dtype=float32)} 	 eval loss : 2.049649953842163 	 eval_accuracy 0.45875459909439087
+step 8000	train {'grads': Array(12.794971, dtype=float32), 'loss': Array(0.6192202, dtype=float32)} 	 eval loss : 3.0157928466796875 	 eval_accuracy 0.29480698704719543
+step 10000	train {'grads': Array(4.883387, dtype=float32), 'loss': Array(0.1246207, dtype=float32)} 	 eval loss : 2.8798086643218994 	 eval_accuracy 0.33226102590560913
+step 12000	train {'grads': Array(22.51797, dtype=float32), 'loss': Array(0.42525974, dtype=float32)} 	 eval loss : 6.668335914611816 	 eval_accuracy 0.04928768426179886
+step 14000	train {'grads': Array(1.5150236, dtype=float32), 'loss': Array(0.02221766, dtype=float32)} 	 eval loss : 9.556172370910645 	 eval_accuracy 0.0078125
+step 16000	train {'grads': Array(18.494085, dtype=float32), 'loss': Array(1.4859185, dtype=float32)} 	 eval loss : 2.1171493530273438 	 eval_accuracy 0.46105238795280457
+step 18000	train {'grads': Array(26.552166, dtype=float32), 'loss': Array(4.2396283, dtype=float32)} 	 eval loss : 1.3500714302062988 	 eval_accuracy 0.6370634436607361
+step 20000	train {'grads': Array(16.199759, dtype=float32), 'loss': Array(0.92820835, dtype=float32)} 	 eval loss : 1.2887905836105347 	 eval_accuracy 0.6452205777168274
+step 22000	train {'grads': Array(0.82098436, dtype=float32), 'loss': Array(0.01543586, dtype=float32)} 	 eval loss : 1.526437520980835 	 eval_accuracy 0.5901884436607361
+step 24000	train {'grads': Array(21.049398, dtype=float32), 'loss': Array(0.6271466, dtype=float32)} 	 eval loss : 2.7237226963043213 	 eval_accuracy 0.38292738795280457
+step 26000	train {'grads': Array(4.4147315, dtype=float32), 'loss': Array(0.09439205, dtype=float32)} 	 eval loss : 3.5338761806488037 	 eval_accuracy 0.2972196638584137
